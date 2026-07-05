@@ -15,6 +15,24 @@ Lightweight clipboard history manager for Wayland with a GPU-accelerated notch s
 
 ## Installation
 
+### Arch Linux / Omarchy (AUR)
+
+```bash
+yay -S clipvault
+
+# autostart the daemon with your session
+systemctl --user enable --now clipvault
+
+# Hyprland keybind + window rules (add to ~/.config/hypr/hyprland.conf)
+echo 'source = /usr/share/clipvault/hyprland-clipvault.conf' >> ~/.config/hypr/hyprland.conf
+hyprctl reload
+```
+
+On Omarchy you can put the SUPER+SHIFT+V bind in `~/.config/hypr/bindings.conf`
+instead; the packaged rules file only carries window rules if you prefer that split.
+
+### From source
+
 ```bash
 cargo build --release
 sudo cp target/release/clipvault /usr/local/bin/
@@ -34,20 +52,31 @@ sudo cp target/release/clipvault /usr/local/bin/
 
 ## Hyprland Integration
 
+The AUR package ships a ready-made config at
+`/usr/share/clipvault/hyprland-clipvault.conf` (keybind + window rules for the
+`clipvault` host and `clipvault-shelf` windows). Source it as shown above, or
+copy what you need:
+
 ```ini
 # keybind
 bind = SUPER SHIFT, V, exec, clipvault toggle
 
-# autostart
-exec-once = clipvault
+# notch shelf: floating top-center bar
+windowrule = float on, match:class ^(clipvault-shelf)$
+windowrule = size 800 140, match:class ^(clipvault-shelf)$
+windowrule = move 50%-400 8, match:class ^(clipvault-shelf)$
+windowrule = stay_focused on, match:class ^(clipvault-shelf)$
+windowrule = rounding 12, match:class ^(clipvault-shelf)$
 
-# window rules
-windowrule = opacity 0.95, match:class ^(clipvault)$
-windowrule = no_blur on, match:class ^(clipvault)$
-windowrule = rounding 12, match:class ^(clipvault)$
-windowrule = no_shadow on, match:class ^(clipvault)$
-windowrule = stay_focused on, match:class ^(clipvault)$
+# invisible 2x2 host window (required by the Wayland windowing model)
+windowrule = float on, match:class ^(clipvault)$
+windowrule = size 2 2, match:class ^(clipvault)$
+windowrule = opacity 0, match:class ^(clipvault)$
+windowrule = no_focus on, match:class ^(clipvault)$
 ```
+
+Prefer the systemd user service over `exec-once` for autostart:
+`systemctl --user enable --now clipvault`.
 
 ## Configuration
 

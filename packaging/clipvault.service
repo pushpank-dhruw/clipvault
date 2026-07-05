@@ -1,0 +1,14 @@
+[Unit]
+Description=ClipVault clipboard history daemon
+Documentation=https://github.com/pushpank-dhruw/clipvault
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/clipvault
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
