@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use fuzzy_matcher::FuzzyMatcher;
+use image::GenericImageView;
 use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -177,6 +178,7 @@ impl Store {
                 let ext = mime_type.rsplit('/').next().unwrap_or("png");
                 let path = dir.join(format!("{}.{}", hash, ext));
                 let _ = std::fs::write(&path, data);
+                let _ = generate_thumbnail(&path, dir);
                 path.to_string_lossy().to_string()
             })
             .unwrap_or_default();
@@ -618,6 +620,96 @@ fn map_row(row: &rusqlite::Row) -> rusqlite::Result<ClipboardEntry> {
         mime_type: row.get(8)?,
         category: row.get(9)?,
     })
+}
+
+pub fn generate_thumbnail(image_path: &Path, images_dir: &Path) -> Result<Option<PathBuf>> {
+    let img = match image::open(image_path) {
+        Ok(img) => img,
+        Err(e) => {
+            tracing::warn!("failed to open image for thumbnail: {}", e);
+            return Ok(None);
+        }
+    };
+    let (w, h) = img.dimensions();
+    let thumb_size = 64u32;
+    let thumb = if w > h {
+        let new_w = (w as f32 * thumb_size as f32 / h as f32) as u32;
+        img.resize(new_w, thumb_size, image::imageops::FilterType::CatmullRom)
+    } else {
+        let new_h = (h as f32 * thumb_size as f32 / w as f32) as u32;
+        img.resize(thumb_size, new_h, image::imageops::FilterType::CatmullRom)
+    };
+    let thumb = thumb.crop_imm(
+        0,
+        0,
+        thumb_size.min(thumb.width()),
+        thumb_size.min(thumb.height()),
+    );
+
+    let filename = image_path.file_name().unwrap_or_default();
+    let thumb_path = images_dir.join(format!("thumb_{}", filename.to_string_lossy()));
+    if let Err(e) = thumb.save(&thumb_path) {
+        tracing::warn!("failed to save thumbnail: {}", e);
+        return Ok(None);
+    }
+    Ok(Some(thumb_path))
+}
+
+impl Store {
+    pub fn get_image_thumbnail(&self, id: i64) -> Result<Option<Vec<u8>>> {
+        let entry = self.get_by_id(id)?;
+        match entry {
+            Some(e) if e.content_type == "image" => {
+                if let Some(path) = &e.content_path {
+                    let p = Path::new(path);
+                    let thumb_name = format!(
+                        "thumb_{}",
+                        p.file_name().unwrap_or_default().to_string_lossy()
+                    );
+                    let thumb_path = p.parent().map(|parent| parent.join(&thumb_name));
+                    if let Some(tp) = thumb_path
+                        && tp.exists()
+                    {
+                        std::fs::read(tp)
+                            .map(Some)
+                            .context("failed to read thumbnail")
+                    } else {
+                        Ok(None)
+                    }
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+
+    pub fn list_by_type_and_category(
+        &self,
+        content_type: &str,
+        category: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<ClipboardEntry>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, content, content_type, source, hash, timestamp, \
+                 favorite, content_path, mime_type, category \
+                 FROM clipboard WHERE content_type = ?1 AND category = ?2 \
+                 ORDER BY timestamp DESC LIMIT ?3 OFFSET ?4",
+            )
+            .context("failed to prepare list_by_type_and_category")?;
+        let entries = stmt
+            .query_map(
+                params![content_type, category, limit as i64, offset as i64],
+                map_row,
+            )
+            .context("failed to query list_by_type_and_category")?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(entries)
+    }
 }
 
 #[cfg(test)]

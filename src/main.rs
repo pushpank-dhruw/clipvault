@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use clipvault::config::Config;
 use clipvault::gui::ClipboardApp;
-use clipvault::ipc;
+use clipvault::ipc::{self, IpcState};
 use clipvault::monitor::{ClipboardContent, ClipboardMonitor};
 use clipvault::store::Store;
 use sha2::{Digest, Sha256};
@@ -23,8 +23,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Toggle the GUI overlay window
+    /// Toggle the clipboard shelf window
     Toggle,
+    /// Quit the running daemon
+    Quit,
     /// List clipboard history as JSON
     List {
         #[arg(long, default_value = "table")]
@@ -50,17 +52,18 @@ fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Toggle) => {
-            if !Config::socket_path().exists() {
-                run_daemon(config)?;
-            } else {
-                let socket_path = Config::socket_path();
-                match ipc::send_command(&socket_path, ipc::TOGGLE_CMD) {
-                    Ok(resp) => println!("{}", resp.trim()),
-                    Err(e) => {
-                        eprintln!("Daemon not responding, starting new: {}", e);
-                        run_daemon(config)?;
-                    }
+            launch_or_signal(config, true);
+            Ok(())
+        }
+        Some(Commands::Quit) => {
+            let socket_path = Config::socket_path();
+            if socket_path.exists() {
+                match ipc::send_command(&socket_path, ipc::QUIT_CMD) {
+                    Ok(_) => println!("Daemon stopped"),
+                    Err(e) => eprintln!("Failed to stop daemon: {}", e),
                 }
+            } else {
+                println!("Daemon not running");
             }
             Ok(())
         }
@@ -120,13 +123,30 @@ fn main() -> Result<()> {
             Ok(())
         }
         None => {
-            run_daemon(config)?;
+            run_daemon(config, false)?;
             Ok(())
         }
     }
 }
 
-fn run_daemon(config: Config) -> Result<()> {
+fn launch_or_signal(config: Config, _start_visible: bool) {
+    let socket_path = Config::socket_path();
+
+    if socket_path.exists() {
+        match ipc::send_command(&socket_path, ipc::TOGGLE_CMD) {
+            Ok(_) => return,
+            Err(_) => {
+                let _ = std::fs::remove_file(&socket_path);
+            }
+        }
+    }
+
+    if let Err(e) = run_daemon(config, true) {
+        eprintln!("Failed to start daemon: {}", e);
+    }
+}
+
+fn run_daemon(config: Config, start_visible: bool) -> Result<()> {
     let db_path = Config::db_path()?;
     let images_dir = Config::images_dir()?;
     let store = Store::open(
@@ -138,13 +158,18 @@ fn run_daemon(config: Config) -> Result<()> {
     let store = Arc::new(Mutex::new(store));
 
     let toggle_flag = Arc::new(AtomicBool::new(false));
+    let quit_flag = Arc::new(AtomicBool::new(false));
     let store_for_gui = store.clone();
 
-    let ipc_toggle = toggle_flag.clone();
+    let ipc_state = IpcState {
+        toggle_flag: toggle_flag.clone(),
+        quit_flag: quit_flag.clone(),
+        store: store.clone(),
+    };
     let socket_path = Config::socket_path();
 
     std::thread::spawn(move || {
-        if let Err(e) = ipc::listen(&socket_path, ipc_toggle) {
+        if let Err(e) = ipc::listen(&socket_path, ipc_state) {
             tracing::error!("IPC listener failed: {}", e);
         }
     });
@@ -190,13 +215,15 @@ fn run_daemon(config: Config) -> Result<()> {
 
     tracing::info!("clipvault daemon started");
 
+    let viewport_builder = egui::ViewportBuilder::default()
+        .with_inner_size([config.shelf_width, config.shelf_height])
+        .with_decorations(false)
+        .with_transparent(true)
+        .with_always_on_top()
+        .with_window_level(egui::WindowLevel::AlwaysOnTop);
+
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([config.overlay_width, config.overlay_height])
-            .with_decorations(false)
-            .with_transparent(true)
-            .with_always_on_top()
-            .with_window_level(egui::WindowLevel::AlwaysOnTop),
+        viewport: viewport_builder,
         ..Default::default()
     };
 
@@ -205,9 +232,11 @@ fn run_daemon(config: Config) -> Result<()> {
         native_options,
         Box::new(move |_cc| {
             Ok(Box::new(GuiWrapper {
-                app: ClipboardApp::new(store_for_gui),
+                app: ClipboardApp::new(store_for_gui, &config),
                 toggle_flag,
-                window_closed: false,
+                quit_flag,
+                window_visible: start_visible,
+                first_frame: true,
             }))
         }),
     )
@@ -217,27 +246,58 @@ fn run_daemon(config: Config) -> Result<()> {
 struct GuiWrapper {
     app: ClipboardApp,
     toggle_flag: Arc<AtomicBool>,
-    window_closed: bool,
+    quit_flag: Arc<AtomicBool>,
+    window_visible: bool,
+    first_frame: bool,
 }
 
 impl eframe::App for GuiWrapper {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.window_closed {
-            return;
+        if self.first_frame {
+            self.first_frame = false;
+            if !self.window_visible {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                return;
+            }
         }
 
-        if self.toggle_flag.swap(false, Ordering::SeqCst) {
-            self.window_closed = true;
+        if self.quit_flag.swap(false, Ordering::SeqCst) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
 
+        if self.toggle_flag.swap(false, Ordering::SeqCst) {
+            self.window_visible = !self.window_visible;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(self.window_visible));
+            if self.window_visible {
+                position_notch(ctx);
+            } else {
+                return;
+            }
+        }
+
         self.app.update(ctx, _frame);
+
+        if self.window_visible
+            && ctx.input(|i| i.key_pressed(egui::Key::Escape))
+            && !ctx.wants_keyboard_input()
+        {
+            self.window_visible = false;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
     }
 
     fn on_exit(&mut self) {
         let _ = std::fs::remove_file(Config::socket_path());
     }
+}
+
+fn position_notch(ctx: &egui::Context) {
+    let screen = ctx.available_rect();
+    let window_size = ctx.input(|i| i.screen_rect().size());
+    let x = screen.min.x + (screen.width() - window_size.x) / 2.0;
+    let y = screen.min.y + 8.0;
+    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
 }
 
 fn get_clipboard_text_now() -> Result<String> {

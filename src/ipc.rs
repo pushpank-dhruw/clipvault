@@ -1,10 +1,11 @@
+use crate::store::Store;
 use anyhow::{Context, Result};
 use interprocess::local_socket::traits::ListenerExt;
 use interprocess::local_socket::{ConnectOptions, GenericFilePath, ListenerOptions, ToFsName};
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 pub const TOGGLE_CMD: &[u8] = b"toggle";
 pub const QUIT_CMD: &[u8] = b"quit";
@@ -30,7 +31,13 @@ pub fn send_command(socket_path: &Path, cmd: &[u8]) -> Result<String> {
     Ok(response)
 }
 
-pub fn listen(socket_path: &Path, toggle_flag: Arc<AtomicBool>) -> Result<()> {
+pub struct IpcState {
+    pub toggle_flag: Arc<AtomicBool>,
+    pub quit_flag: Arc<AtomicBool>,
+    pub store: Arc<Mutex<Store>>,
+}
+
+pub fn listen(socket_path: &Path, state: IpcState) -> Result<()> {
     let _ = std::fs::remove_file(socket_path);
 
     if let Some(parent) = socket_path.parent() {
@@ -56,14 +63,22 @@ pub fn listen(socket_path: &Path, toggle_flag: Arc<AtomicBool>) -> Result<()> {
 
                 match cmd {
                     c if c == TOGGLE_CMD => {
-                        toggle_flag.store(true, Ordering::SeqCst);
-                        let _ = stream.write_all(b"ok");
+                        state.toggle_flag.store(true, Ordering::SeqCst);
+                    }
+                    c if c == QUIT_CMD => {
+                        state.quit_flag.store(true, Ordering::SeqCst);
+                        let _ = stream.write_all(b"bye");
+                        continue;
                     }
                     c if c == STATUS_CMD => {
-                        let _ = stream.write_all(b"running");
+                        let count = state.store.lock().unwrap().count().unwrap_or(0);
+                        let resp = format!("{}\n", count);
+                        let _ = stream.write_all(resp.as_bytes());
+                        continue;
                     }
                     _ => {}
                 }
+                let _ = stream.write_all(b"ok");
             }
             Err(e) => {
                 tracing::warn!("IPC connection error: {}", e);

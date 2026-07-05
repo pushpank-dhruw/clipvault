@@ -29,22 +29,32 @@
 - [x] Image paste support via wl-copy --type
 - [x] 9 passing tests (4 new: image, type filter, source filter, categories)
 
-### Phase 2B — Notch Shelf UI
+### Phase 2B — Notch Shelf UI (✅ Complete)
 
-- [ ] Shelf mode — 800x120 top-center bar
-- [ ] Horizontal scroll of clip cards
-- [ ] Text preview + image thumbnails
-- [ ] Type filter tabs
-- [ ] Favorites filter toggle
-- [ ] Keyboard nav in shelf mode
+- [x] Shelf mode: 800x140 top-center bar, frameless, rounded, drop shadow
+- [x] Horizontal scroll of clip cards
+- [x] Text preview + image thumbnails (cached textures)
+- [x] Type filter tabs (All / Text / Image)
+- [x] Favorites filter toggle
+- [x] Keyboard nav in shelf mode
+- [x] Inline search in shelf
+- [x] IPC: proper quit command, status now returns entry count
+- [x] CLI simplified: toggle, quit, list, search, clear, status
 
-### Phase 2C — Library View
+> Architecture note: an interim Overlay / Shelf / Library multi-view system (ViewMode)
+> was built, then removed in favor of a single shelf view. Library-style management
+> (context menu, categories, favorites, delete) lives directly in the shelf.
 
-- [ ] Full-screen library overlay (1200x800)
-- [ ] Group by app with collapsible sections
-- [ ] Category filter tabs
-- [ ] Right-click context menu
-- [ ] Full fuzzy search
+### Phase 2C — Shelf Refinements (✅ Complete)
+
+- [x] Right-click context menu with Favorite toggle, Category assignment (inline pills), Delete
+- [x] Delete confirmation dialog with Cancel/Delete buttons
+- [x] Favorite star indicator on shelf cards
+- [x] Category badges on shelf cards
+- [x] Hover effects: border highlight + action buttons (favorite, delete)
+- [x] Favorites filter pill in shelf filter row
+- [x] Context menu positioning fixed relative to card (right edge)
+- [x] Escape key closes context menu and delete dialog
 
 ### Phase 2D — Advanced
 
