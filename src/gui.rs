@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::store::{ClipboardEntry, Store};
 use eframe::egui;
 use egui::{
-    Color32, CornerRadius, FontFamily, FontId, Key, TextureHandle, Vec2, ViewportCommand, Widget,
+    Color32, CornerRadius, FontFamily, FontId, Key, TextureHandle, Vec2, Widget,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -26,7 +26,6 @@ pub struct ClipboardApp {
     categories: Vec<(i64, String, Option<String>)>,
     thumbnails: HashMap<i64, TextureHandle>,
     thumb_size: f32,
-    positioned: bool,
     shelf_loaded: bool,
     context_menu_entry_id: Option<i64>,
     context_menu_visible: bool,
@@ -52,7 +51,6 @@ impl ClipboardApp {
             categories,
             thumbnails: HashMap::new(),
             thumb_size: config.shelf_thumb_size,
-            positioned: false,
             shelf_loaded: false,
             context_menu_entry_id: None,
             context_menu_visible: false,
@@ -484,16 +482,16 @@ impl ClipboardApp {
     }
 }
 
-impl eframe::App for ClipboardApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.should_hide = false;
+impl ClipboardApp {
+    /// True while a context menu or delete dialog is open (Escape should close
+    /// those instead of hiding the shelf).
+    pub fn modal_open(&self) -> bool {
+        self.context_menu_visible || self.delete_confirm_visible
+    }
 
-        if !self.positioned {
-            self.positioned = true;
-            if let Some(cmd) = ViewportCommand::center_on_screen(ctx) {
-                ctx.send_viewport_cmd(cmd);
-            }
-        }
+    /// Render one frame of the shelf UI into the current viewport.
+    pub fn ui(&mut self, ctx: &egui::Context) {
+        self.should_hide = false;
 
         ctx.style_mut(|style| {
             style.visuals = egui::Visuals {

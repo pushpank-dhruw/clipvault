@@ -215,18 +215,23 @@ fn run_daemon(config: Config, start_visible: bool) -> Result<()> {
 
     tracing::info!("clipvault daemon started");
 
+    // Invisible 1x1 host window. On Wayland a mapped toplevel cannot be hidden
+    // again (Visible(false) is a no-op), so real windows live in child
+    // viewports below: dropping a show_viewport_immediate call destroys its
+    // surface, which is the only reliable hide.
     let viewport_builder = egui::ViewportBuilder::default()
-        .with_inner_size([config.shelf_width, config.shelf_height])
+        .with_inner_size([2.0, 2.0])
+        .with_visible(false)
         .with_decorations(false)
         .with_transparent(true)
-        .with_always_on_top()
-        .with_window_level(egui::WindowLevel::AlwaysOnTop);
+        .with_app_id("clipvault");
 
     let native_options = eframe::NativeOptions {
         viewport: viewport_builder,
         ..Default::default()
     };
 
+    let shelf_size = [config.shelf_width, config.shelf_height];
     eframe::run_native(
         "clipvault",
         native_options,
@@ -235,8 +240,8 @@ fn run_daemon(config: Config, start_visible: bool) -> Result<()> {
                 app: ClipboardApp::new(store_for_gui, &config),
                 toggle_flag,
                 quit_flag,
-                window_visible: start_visible,
-                first_frame: true,
+                shelf_visible: start_visible,
+                shelf_size,
             }))
         }),
     )
@@ -247,57 +252,60 @@ struct GuiWrapper {
     app: ClipboardApp,
     toggle_flag: Arc<AtomicBool>,
     quit_flag: Arc<AtomicBool>,
-    window_visible: bool,
-    first_frame: bool,
+    shelf_visible: bool,
+    shelf_size: [f32; 2],
 }
 
 impl eframe::App for GuiWrapper {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.first_frame {
-            self.first_frame = false;
-            if !self.window_visible {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-                return;
-            }
-        }
-
         if self.quit_flag.swap(false, Ordering::SeqCst) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
 
         if self.toggle_flag.swap(false, Ordering::SeqCst) {
-            self.window_visible = !self.window_visible;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(self.window_visible));
-            if self.window_visible {
-                position_notch(ctx);
-            } else {
-                return;
+            self.shelf_visible = !self.shelf_visible;
+        }
+
+        if self.shelf_visible {
+            let builder = egui::ViewportBuilder::default()
+                .with_title("clipvault")
+                .with_app_id("clipvault-shelf")
+                .with_inner_size(self.shelf_size)
+                .with_decorations(false)
+                .with_transparent(true)
+                .with_window_level(egui::WindowLevel::AlwaysOnTop);
+
+            let mut hide = false;
+            let app = &mut self.app;
+            ctx.show_viewport_immediate(
+                egui::ViewportId::from_hash_of("clipvault-shelf"),
+                builder,
+                |ctx, _class| {
+                    let modal_was_open = app.modal_open();
+                    app.ui(ctx);
+
+                    let escape = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+                    if app.should_hide
+                        || (escape && !modal_was_open && !ctx.wants_keyboard_input())
+                        || ctx.input(|i| i.viewport().close_requested())
+                    {
+                        hide = true;
+                    }
+                },
+            );
+            if hide {
+                self.shelf_visible = false;
             }
         }
 
-        self.app.update(ctx, _frame);
-
-        if self.window_visible
-            && ctx.input(|i| i.key_pressed(egui::Key::Escape))
-            && !ctx.wants_keyboard_input()
-        {
-            self.window_visible = false;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-        }
+        // Keep the hidden host ticking so IPC flags are polled while idle.
+        ctx.request_repaint_after(std::time::Duration::from_millis(250));
     }
 
     fn on_exit(&mut self) {
         let _ = std::fs::remove_file(Config::socket_path());
     }
-}
-
-fn position_notch(ctx: &egui::Context) {
-    let screen = ctx.available_rect();
-    let window_size = ctx.input(|i| i.screen_rect().size());
-    let x = screen.min.x + (screen.width() - window_size.x) / 2.0;
-    let y = screen.min.y + 8.0;
-    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
 }
 
 fn get_clipboard_text_now() -> Result<String> {
