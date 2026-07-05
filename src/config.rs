@@ -5,20 +5,36 @@ use std::path::PathBuf;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub max_entries: usize,
+    pub max_image_entries: usize,
     pub poll_interval_ms: u64,
     pub theme: String,
     pub overlay_width: f32,
     pub overlay_height: f32,
+    pub shelf_width: f32,
+    pub shelf_height: f32,
+    pub library_width: f32,
+    pub library_height: f32,
+    pub ocr_enabled: bool,
+    pub hide_sensitive: bool,
+    pub image_store_dir: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             max_entries: 500,
+            max_image_entries: 50,
             poll_interval_ms: 500,
             theme: "tokyo-night".into(),
             overlay_width: 600.0,
             overlay_height: 450.0,
+            shelf_width: 800.0,
+            shelf_height: 120.0,
+            library_width: 1200.0,
+            library_height: 800.0,
+            ocr_enabled: false,
+            hide_sensitive: false,
+            image_store_dir: "images".into(),
         }
     }
 }
@@ -36,6 +52,10 @@ impl Config {
             .context("failed to determine data directory")?;
         let data_dir = dir.data_dir().to_path_buf();
         Ok(data_dir)
+    }
+
+    pub fn images_dir() -> Result<PathBuf> {
+        Ok(Self::data_dir()?.join("images"))
     }
 
     pub fn db_path() -> Result<PathBuf> {

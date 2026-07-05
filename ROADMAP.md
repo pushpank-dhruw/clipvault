@@ -17,14 +17,42 @@
 
 ## Phase 2 — Polish (🔄 Next)
 
+### Phase 2A — Data Model + Image Capture (✅ Complete)
+
+- [x] Schema migration — content_path, mime_type, category columns
+- [x] Image storage — files on disk at ~/.local/share/clipvault/images/
+- [x] ClipboardContent enum — Text | Image variants
+- [x] MIME type detection via wl-paste --list-types
+- [x] New store methods: insert_image, list_by_type, list_by_source, set_category
+- [x] Category system — predefined (Code, Design, Links, Notes, Sensitive) + user CRUD
+- [x] evict_old() skips favorites (text) and favorites (images)
+- [x] Image paste support via wl-copy --type
+- [x] 9 passing tests (4 new: image, type filter, source filter, categories)
+
+### Phase 2B — Notch Shelf UI
+
+- [ ] Shelf mode — 800x120 top-center bar
+- [ ] Horizontal scroll of clip cards
+- [ ] Text preview + image thumbnails
+- [ ] Type filter tabs
+- [ ] Favorites filter toggle
+- [ ] Keyboard nav in shelf mode
+
+### Phase 2C — Library View
+
+- [ ] Full-screen library overlay (1200x800)
+- [ ] Group by app with collapsible sections
+- [ ] Category filter tabs
+- [ ] Right-click context menu
+- [ ] Full fuzzy search
+
+### Phase 2D — Advanced
+
 - [ ] Systemd user service for robust daemon autostart
 - [ ] Tray icon — show ClipVault is running (egui or ksni)
-- [ ] Image clipboard preview in overlay
 - [ ] Waybar module — clipboard count status
 - [ ] Multi-monitor position awareness for overlay
-- [ ] Paste-on-select mode — click to paste without closing
 - [ ] Configurable max entries & poll interval from GUI settings
-- [ ] Keyboard navigation in overlay (arrow keys, enter to paste)
 
 ## Phase 3 — Advanced
 

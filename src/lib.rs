@@ -3,3 +3,5 @@ pub mod gui;
 pub mod ipc;
 pub mod monitor;
 pub mod store;
+
+pub use monitor::ClipboardContent;

@@ -1,6 +1,6 @@
 use crate::store::{ClipboardEntry, Store};
 use eframe::egui;
-use egui::{Color32, CornerRadius, FontFamily, FontId, Vec2, ViewportCommand};
+use egui::{Color32, CornerRadius, FontFamily, FontId, Key, Vec2, ViewportCommand};
 use std::sync::{Arc, Mutex};
 
 const BG: Color32 = Color32::from_rgb(0x1a, 0x1b, 0x26);
@@ -8,21 +8,27 @@ const FG: Color32 = Color32::from_rgb(0xa9, 0xb1, 0xd6);
 const FG_DIM: Color32 = Color32::from_rgb(0x56, 0x5f, 0x89);
 const RED: Color32 = Color32::from_rgb(0xf7, 0x76, 0x8e);
 const GREEN: Color32 = Color32::from_rgb(0x9e, 0xce, 0x6a);
+const ACCENT: Color32 = Color32::from_rgb(0x7a, 0xa2, 0xf7);
+const ENTRY_BG: Color32 = Color32::from_rgb(0x1e, 0x20, 0x30);
+const ENTRY_BG_SELECTED: Color32 = Color32::from_rgb(0x24, 0x27, 0x3a);
 
 pub struct ClipboardApp {
     store: Arc<Mutex<Store>>,
     entries: Vec<ClipboardEntry>,
     search_query: String,
+    selected_index: Option<usize>,
     hide_on_escape: bool,
 }
 
 impl ClipboardApp {
     pub fn new(store: Arc<Mutex<Store>>) -> Self {
         let entries = store.lock().unwrap().list(500, 0).unwrap_or_default();
+        let selected_index = if entries.is_empty() { None } else { Some(0) };
         Self {
             store,
             entries,
             search_query: String::new(),
+            selected_index,
             hide_on_escape: true,
         }
     }
@@ -34,12 +40,63 @@ impl ClipboardApp {
         } else {
             self.entries = store.search(&self.search_query, 500).unwrap_or_default();
         }
+        self.selected_index = if self.entries.is_empty() {
+            None
+        } else {
+            Some(0)
+        };
+    }
+}
+
+impl ClipboardApp {
+    fn handle_keyboard(&mut self, ctx: &egui::Context) -> bool {
+        if !ctx.wants_keyboard_input() {
+            if ctx.input(|i| i.key_pressed(Key::ArrowUp)) {
+                let new_idx = self.selected_index.map_or(0, |i| i.saturating_sub(1));
+                self.selected_index = Some(new_idx);
+                return true;
+            }
+            if ctx.input(|i| i.key_pressed(Key::ArrowDown)) {
+                let max = self.entries.len().saturating_sub(1);
+                let new_idx = self
+                    .selected_index
+                    .map_or(0, |i| i.saturating_add(1).min(max));
+                self.selected_index = Some(new_idx);
+                return true;
+            }
+            if ctx.input(|i| i.key_pressed(Key::Enter))
+                && let Some(idx) = self.selected_index
+                && let Some(entry) = self.entries.get(idx)
+            {
+                paste_entry(entry, &self.store);
+                return true;
+            }
+        }
+        false
+    }
+}
+
+fn paste_entry(entry: &ClipboardEntry, store: &Arc<Mutex<crate::store::Store>>) {
+    if entry.content_type == "image" {
+        let data = store
+            .lock()
+            .unwrap()
+            .get_image_data(entry.id)
+            .ok()
+            .flatten();
+        if let Some(data) = data {
+            let mime = entry.mime_type.as_deref().unwrap_or("image/png");
+            let _ = set_clipboard_image(&data, mime);
+        }
+    } else {
+        let _ = set_clipboard(&entry.content);
     }
 }
 
 impl eframe::App for ClipboardApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let mut should_close = false;
+        self.handle_keyboard(ctx);
 
         ctx.style_mut(|style| {
             style.visuals = egui::Visuals {
@@ -185,7 +242,9 @@ impl eframe::App for ClipboardApp {
                         }
 
                         let entries_to_render = self.entries.clone();
-                        for entry in &entries_to_render {
+                        for (i, entry) in entries_to_render.iter().enumerate() {
+                            let is_selected = self.selected_index == Some(i);
+
                             let preview = entry.content.lines().next().unwrap_or("");
                             let max_preview = 120;
                             let preview_text = if preview.len() > max_preview {
@@ -197,10 +256,21 @@ impl eframe::App for ClipboardApp {
                             let time_str = entry.timestamp.format("%H:%M").to_string();
                             let icon = if entry.favorite { "★" } else { "📋" };
 
+                            let entry_fill = if is_selected {
+                                ENTRY_BG_SELECTED
+                            } else {
+                                ENTRY_BG
+                            };
+                            let border_color = if is_selected {
+                                ACCENT
+                            } else {
+                                Color32::from_rgb(0x31, 0x34, 0x4a)
+                            };
+
                             let frame = egui::Frame {
-                                fill: Color32::from_rgb(0x1e, 0x20, 0x30),
+                                fill: entry_fill,
                                 corner_radius: CornerRadius::same(6),
-                                stroke: egui::Stroke::new(1.0, Color32::from_rgb(0x31, 0x34, 0x4a)),
+                                stroke: egui::Stroke::new(1.0, border_color),
                                 ..Default::default()
                             };
 
@@ -270,8 +340,7 @@ impl eframe::App for ClipboardApp {
                                 .response;
 
                             if resp.clicked() {
-                                let _ = set_clipboard(&entry.content);
-                                should_close = true;
+                                paste_entry(entry, &self.store);
                             }
 
                             ui.add_space(2.0);
@@ -297,6 +366,20 @@ fn set_clipboard(content: &str) -> anyhow::Result<()> {
     use std::io::Write;
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(content.as_bytes())?;
+    }
+    child.wait()?;
+    Ok(())
+}
+
+fn set_clipboard_image(data: &[u8], mime_type: &str) -> anyhow::Result<()> {
+    let mut child = std::process::Command::new("wl-copy")
+        .arg("--type")
+        .arg(mime_type)
+        .stdin(std::process::Stdio::piped())
+        .spawn()?;
+    use std::io::Write;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(data)?;
     }
     child.wait()?;
     Ok(())

@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use clipvault::config::Config;
 use clipvault::gui::ClipboardApp;
 use clipvault::ipc;
-use clipvault::monitor::ClipboardMonitor;
+use clipvault::monitor::{ClipboardContent, ClipboardMonitor};
 use clipvault::store::Store;
 use sha2::{Digest, Sha256};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -66,21 +66,36 @@ fn main() -> Result<()> {
         }
         Some(Commands::List { format: _ }) => {
             let db_path = Config::db_path()?;
-            let store = Store::open(&db_path, config.max_entries)?;
+            let store = Store::open(
+                &db_path,
+                config.max_entries,
+                config.max_image_entries,
+                Config::images_dir().ok(),
+            )?;
             let entries = store.list(100, 0)?;
             println!("{}", serde_json::to_string_pretty(&entries)?);
             Ok(())
         }
         Some(Commands::Search { query }) => {
             let db_path = Config::db_path()?;
-            let store = Store::open(&db_path, config.max_entries)?;
+            let store = Store::open(
+                &db_path,
+                config.max_entries,
+                config.max_image_entries,
+                Config::images_dir().ok(),
+            )?;
             let entries = store.search(&query, 100)?;
             println!("{}", serde_json::to_string_pretty(&entries)?);
             Ok(())
         }
         Some(Commands::Clear) => {
             let db_path = Config::db_path()?;
-            let mut store = Store::open(&db_path, config.max_entries)?;
+            let mut store = Store::open(
+                &db_path,
+                config.max_entries,
+                config.max_image_entries,
+                Config::images_dir().ok(),
+            )?;
             store.clear()?;
             println!("Clipboard history cleared");
             Ok(())
@@ -88,7 +103,12 @@ fn main() -> Result<()> {
         Some(Commands::Status) => {
             let socket_path = Config::socket_path();
             let db_path = Config::db_path()?;
-            let store = Store::open(&db_path, config.max_entries)?;
+            let store = Store::open(
+                &db_path,
+                config.max_entries,
+                config.max_image_entries,
+                Config::images_dir().ok(),
+            )?;
             let count = store.count()?;
             if socket_path.exists() {
                 println!("Daemon: running");
@@ -108,7 +128,13 @@ fn main() -> Result<()> {
 
 fn run_daemon(config: Config) -> Result<()> {
     let db_path = Config::db_path()?;
-    let store = Store::open(&db_path, config.max_entries)?;
+    let images_dir = Config::images_dir()?;
+    let store = Store::open(
+        &db_path,
+        config.max_entries,
+        config.max_image_entries,
+        Some(images_dir),
+    )?;
     let store = Arc::new(Mutex::new(store));
 
     let toggle_flag = Arc::new(AtomicBool::new(false));
@@ -136,13 +162,26 @@ fn run_daemon(config: Config) -> Result<()> {
         let rt = tokio::runtime::Runtime::new().unwrap();
         if let Err(e) = rt.block_on(monitor.run(move |content, _hash| {
             let source = get_active_app();
-            if let Err(e) =
-                store_for_monitor
-                    .lock()
-                    .unwrap()
-                    .insert(&content, "text", source.as_deref())
-            {
-                tracing::error!("failed to store clipboard entry: {}", e);
+            match content {
+                ClipboardContent::Text(text) => {
+                    if let Err(e) =
+                        store_for_monitor
+                            .lock()
+                            .unwrap()
+                            .insert(&text, "text", source.as_deref())
+                    {
+                        tracing::error!("failed to store clipboard entry: {}", e);
+                    }
+                }
+                ClipboardContent::Image { data, mime_type } => {
+                    if let Err(e) = store_for_monitor.lock().unwrap().insert_image(
+                        &data,
+                        &mime_type,
+                        source.as_deref(),
+                    ) {
+                        tracing::error!("failed to store image: {}", e);
+                    }
+                }
             }
         })) {
             tracing::error!("clipboard monitor failed: {}", e);
