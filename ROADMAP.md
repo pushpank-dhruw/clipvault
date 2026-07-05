@@ -1,5 +1,10 @@
 # ClipVault Roadmap
 
+> Direction informed by competitive research of [Supaste](https://www.supaste.com/)
+> (macOS clipboard manager): notch shelf + library window, type/app/category
+> organization, OCR, multi-clip paste, snippets, color clips, screen text capture.
+> ClipVault targets feature parity on Linux/Wayland with native tooling.
+
 ## Phase 1 — Core (✅ Complete)
 
 - [x] Rust + egui project scaffold (eframe wgpu, 7 source files)
@@ -15,7 +20,7 @@
 - [x] 4 passing unit tests on store module
 - [x] `cargo clippy -D warnings` clean
 
-## Phase 2 — Polish (🔄 Next)
+## Phase 2 — Shelf (✅ Complete)
 
 ### Phase 2A — Data Model + Image Capture (✅ Complete)
 
@@ -56,29 +61,69 @@
 - [x] Context menu positioning fixed relative to card (right edge)
 - [x] Escape key closes context menu and delete dialog
 
-### Phase 2D — Advanced
+### Phase 2D — Daemon & Desktop Integration (🔄 Next)
 
 - [ ] Systemd user service for robust daemon autostart
 - [ ] Tray icon — show ClipVault is running (egui or ksni)
 - [ ] Waybar module — clipboard count status
-- [ ] Multi-monitor position awareness for overlay
+- [ ] Multi-monitor position awareness for shelf
 - [ ] Configurable max entries & poll interval from GUI settings
 
-## Phase 3 — Advanced
+## Phase 3 — Library Window
 
-- [ ] OCR for image clipboard content (text in screenshots)
-- [ ] Snippet templates — save and insert reusable text
-- [ ] Sensitive content detection & auto-filter passwords/keys
+The full-window counterpart to the shelf (Supaste's "Clipboard Library").
+
+- [ ] Library window: card grid with thumbnails, type badges, time-ago + size labels
+- [ ] Tab/filter row with live counts (History / Favorites / per-category)
+- [ ] Detail side panel — large preview, created-at, source app, size, type
+- [ ] Detail panel actions: copy, favorite, categorize, delete
+- [ ] Source-app tracking — capture `hyprctl activewindow` class at copy time, store per clip
+- [ ] Source-app icon + name rendered on cards and detail panel
+- [ ] Search across content, category, and source app
+- [ ] Shelf ↔ Library handoff (expand button on shelf opens Library)
+
+## Phase 4 — Organization & Retrieval
+
+- [ ] Custom categories — create/rename/color from the UI (store CRUD already exists)
+- [ ] Find by app — filter history by originating application
+- [ ] Find by type — richer types: link, code, color detection from text content
+- [ ] Collection views — List / Card / Board (Kanban columns) in Library
+- [ ] Pinned clips + "Last 10" quick strip at top of shelf
+- [ ] Advanced search — date range, source app, content type combined
 - [ ] History export/import — JSON, CSV formats
-- [ ] Advanced search — by date range, source app, content type
-- [ ] Encryption for selected/pinned entries
+
+## Phase 5 — Paste Power
+
+- [ ] Quick Paste popup — keyboard-first fuzzy picker, Enter pastes into focused app via `wtype`/`ydotool`
+- [ ] Multi-clip copy — queue several clips, batch-paste sequentially
+- [ ] Snippet templates — reusable text with `{placeholders}` (Supaste "email templates")
+- [ ] Paste transforms — plain-text, trim, case conversion
+- [ ] Sensitive content detection — auto-filter passwords/keys from capture
+
+## Phase 6 — Capture Superpowers
+
+Wayland-native equivalents of Supaste v1.3 capture features.
+
+- [ ] OCR on image clips — "Copy text" action (`ocrs` crate or tesseract)
+- [ ] Capture text from screen — `grim` + `slurp` region → OCR → text clip
+- [ ] Color picker — `hyprpicker` → dedicated color clip type with rendered swatch
+- [ ] Color clips tab in Library (swatch grid)
+- [ ] Screenshot auto-ingest — watch screenshots directory, offer to save as clip
+
+## Phase 7 — Retention, Polish & Ecosystem
+
+- [ ] Clip reminders — schedule `notify-send` notification for a clip
+- [ ] Settings UI — retention rules per type, theme, shortcuts
 - [ ] Auto-cleanup rules — age-based, app-based eviction
-
-## Phase 4 — Ecosystem
-
-- [ ] Flatpak distribution for broader Linux reach
+- [ ] Encryption for selected/pinned entries
+- [ ] Packaging — AUR package, Flatpak distribution
 - [ ] Plugin system — custom actions on clipboard match
 - [ ] Password manager integration (bitwarden, keepassxc)
 - [ ] Global clipboard sync across devices (opt-in, encrypted)
 - [ ] clipvault.dev domain launch and project website
 - [ ] Community contribution guide and issue templates
+
+---
+
+**Per-phase verification:** `cargo test` green, `cargo clippy -- -D warnings` clean,
+manual smoke test (daemon + toggle + feature under test), signed commit per phase.
