@@ -241,6 +241,7 @@ fn run_daemon(config: Config, start_visible: bool) -> Result<()> {
                 toggle_flag,
                 quit_flag,
                 shelf_visible: start_visible,
+                shelf_was_visible: false,
                 shelf_size,
             }))
         }),
@@ -253,7 +254,60 @@ struct GuiWrapper {
     toggle_flag: Arc<AtomicBool>,
     quit_flag: Arc<AtomicBool>,
     shelf_visible: bool,
+    shelf_was_visible: bool,
     shelf_size: [f32; 2],
+}
+
+/// Top-center the shelf on the focused monitor via hyprctl. Wayland clients
+/// cannot position themselves and map-time `move` windowrules lose to float
+/// centering on current Hyprland, so the daemon dispatches the move after the
+/// surface maps (two attempts to cover slow maps).
+fn position_shelf(shelf_width: f32) {
+    if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_err() {
+        return;
+    }
+    std::thread::spawn(move || {
+        for delay_ms in [150u64, 450] {
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+            let Some((mon_x, mon_y, logical_w, reserved_top)) = focused_monitor() else {
+                continue;
+            };
+            let x = mon_x + ((logical_w - shelf_width as i32) / 2).max(0);
+            let y = mon_y + reserved_top + 8;
+            let _ = std::process::Command::new("hyprctl")
+                .args([
+                    "dispatch",
+                    "movewindowpixel",
+                    &format!("exact {} {},class:^(clipvault-shelf)$", x, y),
+                ])
+                .output();
+        }
+    });
+}
+
+/// (x, y, logical width, reserved top) of the focused monitor.
+fn focused_monitor() -> Option<(i32, i32, i32, i32)> {
+    let out = std::process::Command::new("hyprctl")
+        .args(["monitors", "-j"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let mons: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    let mons = mons.as_array()?;
+    let m = mons
+        .iter()
+        .find(|m| m["focused"].as_bool() == Some(true))
+        .or_else(|| mons.first())?;
+    let scale = m["scale"].as_f64().filter(|s| *s > 0.0).unwrap_or(1.0);
+    let logical_w = (m["width"].as_f64()? / scale) as i32;
+    let reserved_top = m["reserved"]
+        .as_array()
+        .and_then(|r| r.get(1))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32;
+    Some((m["x"].as_i64()? as i32, m["y"].as_i64()? as i32, logical_w, reserved_top))
 }
 
 impl eframe::App for GuiWrapper {
@@ -266,6 +320,11 @@ impl eframe::App for GuiWrapper {
         if self.toggle_flag.swap(false, Ordering::SeqCst) {
             self.shelf_visible = !self.shelf_visible;
         }
+
+        if self.shelf_visible && !self.shelf_was_visible {
+            position_shelf(self.shelf_size[0]);
+        }
+        self.shelf_was_visible = self.shelf_visible;
 
         if self.shelf_visible {
             let builder = egui::ViewportBuilder::default()
