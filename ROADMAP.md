@@ -61,63 +61,89 @@
 - [x] Context menu positioning fixed relative to card (right edge)
 - [x] Escape key closes context menu and delete dialog
 
-### Phase 2D — Daemon & Desktop Integration (🔄 Next)
+## Phase 3 — Ship v0.1 to Omarchy (AUR) (🔄 Next)
 
-- [ ] Systemd user service for robust daemon autostart
-- [ ] Tray icon — show ClipVault is running (egui or ksni)
-- [ ] Waybar module — clipboard count status
-- [ ] Multi-monitor position awareness for shelf
-- [ ] Configurable max entries & poll interval from GUI settings
+Distribution mandate: Omarchy / Arch Linux only for now, via a versioned AUR package.
 
-## Phase 3 — Library Window
+### 3A — Wayland windowing fix (pre-publish gate)
 
-The full-window counterpart to the shelf (Supaste's "Clipboard Library").
+- [ ] Invisible root host viewport with app_id `clipvault`
+- [ ] Shelf as child viewport with app_id `clipvault-shelf`; hide by not rendering the viewport (real unmap on Wayland, fixes toggle-off and Escape)
+- [ ] Hyprland windowrules can now match real classes
+- [ ] Config forward-compat: `#[serde(default)]` so old config.toml files keep working
 
-- [ ] Library window: card grid with thumbnails, type badges, time-ago + size labels
-- [ ] Tab/filter row with live counts (History / Favorites / per-category)
-- [ ] Detail side panel — large preview, created-at, source app, size, type
-- [ ] Detail panel actions: copy, favorite, categorize, delete
-- [ ] Source-app tracking — capture `hyprctl activewindow` class at copy time, store per clip
-- [ ] Source-app icon + name rendered on cards and detail panel
-- [ ] Search across content, category, and source app
-- [ ] Shelf ↔ Library handoff (expand button on shelf opens Library)
+### 3B — v0.1.0 release + AUR package
 
-## Phase 4 — Organization & Retrieval
+- [ ] `packaging/PKGBUILD`: versioned build from GitHub release tarball, cargo --locked
+- [ ] `packaging/clipvault.service`: systemd user unit (robust autostart, replaces exec-once)
+- [ ] `packaging/hyprland-clipvault.conf`: SUPER+SHIFT+V bind + float/positioning windowrules
+- [ ] README Install section: `yay -S clipvault`, `systemctl --user enable --now clipvault`
+- [ ] Tag v0.1.0, GitHub release, `.SRCINFO`, AUR repo push
 
-- [ ] Custom categories — create/rename/color from the UI (store CRUD already exists)
-- [ ] Find by app — filter history by originating application
-- [ ] Find by type — richer types: link, code, color detection from text content
-- [ ] Collection views — List / Card / Board (Kanban columns) in Library
-- [ ] Pinned clips + "Last 10" quick strip at top of shelf
-- [ ] Advanced search — date range, source app, content type combined
-- [ ] History export/import — JSON, CSV formats
+### 3C — Omarchy onboarding
 
-## Phase 5 — Paste Power
+- [ ] Omarchy-specific docs: drop the bind into `~/.config/hypr/bindings.conf`
+- [ ] Tokyo Night default theme matches Omarchy aesthetic out of the box
 
-- [ ] Quick Paste popup — keyboard-first fuzzy picker, Enter pastes into focused app via `wtype`/`ydotool`
-- [ ] Multi-clip copy — queue several clips, batch-paste sequentially
-- [ ] Snippet templates — reusable text with `{placeholders}` (Supaste "email templates")
-- [ ] Paste transforms — plain-text, trim, case conversion
-- [ ] Sensitive content detection — auto-filter passwords/keys from capture
+## Phase 4 — Library Window
 
-## Phase 6 — Capture Superpowers
+The full-window counterpart to the shelf (Supaste's "Clipboard Library": masonry grid,
+detail overlay, context menu).
+
+- [ ] Library window (second viewport, app_id `clipvault-library`): card grid with thumbnails, type badges, time-ago + size labels
+- [ ] Tab/filter row with live counts (History / Favorites / per-category; needs `count_favorites()`)
+- [ ] Detail side panel: large preview, created-at, source app, size, type, category
+- [ ] Detail panel actions: copy, favorite, categorize, delete (reuse shelf context-menu patterns)
+- [ ] Source-app normalization: empty `hyprctl` class stored as NULL, never ""
+- [ ] Source-app name rendered on cards, detail panel, and shelf tooltips
+- [ ] Search across content, category, and source app (extend `Store::search` SQL)
+- [ ] Source filter dropdown fed by `list_sources()`
+- [ ] Shelf to Library handoff (expand button on shelf opens Library)
+- [ ] `clipvault library` CLI + IPC command
+- [ ] Multi-monitor position awareness for shelf and library
+
+## Phase 5 — Organization & Types
+
+- [ ] Custom categories: create/rename/color from the UI with inline "+" pill (store CRUD already exists)
+- [ ] Category tabs show live counts (Supaste: History 24, Colors 24, ...)
+- [ ] First-class type detection from text content: link, email, code, color, address
+- [ ] Color clips rendered as swatch cards (like Supaste's #0080FF card)
+- [ ] Find by app + find by type filter rows
+- [ ] Collection views: List / Card / Board (Kanban columns) in Library
+- [ ] Advanced search: date range, source app, content type combined
+- [ ] History export/import: JSON, CSV formats
+
+## Phase 6 — Paste Power
+
+- [ ] Quick Paste popup: centered Spotlight-style picker (search + type pills + card row), Enter pastes into focused app via `wtype`/`ydotool`
+- [ ] Last-N hotkey paste: `clipvault paste --recent N` CLI + Hyprland binds SUPER+SHIFT+0-9
+- [ ] Multi-clip copy: collect several clips into one combined card, batch-paste
+- [ ] Snippet templates: reusable text with `{placeholders}` (Supaste "email templates")
+- [ ] Paste transforms: plain-text, trim, case conversion
+- [ ] STRETCH: inline `;shortcut` expansion in any app (needs evdev/uinput or IME; technical spike first)
+
+## Phase 7 — Capture Superpowers
 
 Wayland-native equivalents of Supaste v1.3 capture features.
 
-- [ ] OCR on image clips — "Copy text" action (`ocrs` crate or tesseract)
-- [ ] Capture text from screen — `grim` + `slurp` region → OCR → text clip
-- [ ] Color picker — `hyprpicker` → dedicated color clip type with rendered swatch
-- [ ] Color clips tab in Library (swatch grid)
-- [ ] Screenshot auto-ingest — watch screenshots directory, offer to save as clip
+- [ ] OCR on image clips: "Copy text" action (`ocrs` crate or tesseract), OCR text searchable
+- [ ] Capture text from screen: `grim` + `slurp` region, then OCR, saved as text clip
+- [ ] Color picker: `hyprpicker` output saved as color clip with rendered swatch
+- [ ] Screenshot auto-ingest: watch screenshots directory, offer to save as clip
 
-## Phase 7 — Retention, Polish & Ecosystem
+## Phase 8 — Retention, Safety & Desktop Polish
 
-- [ ] Clip reminders — schedule `notify-send` notification for a clip
-- [ ] Settings UI — retention rules per type, theme, shortcuts
-- [ ] Auto-cleanup rules — age-based, app-based eviction
+- [ ] Clip reminders: quick-time chips, custom date, on-app-return trigger; `notify-send` + daemon scheduler
+- [ ] Sensitive content detection: auto-filter passwords/keys from capture
+- [ ] Settings UI: retention rules per type, theme, shortcuts
+- [ ] Auto-cleanup rules: age-based, app-based eviction
 - [ ] Encryption for selected/pinned entries
-- [ ] Packaging — AUR package, Flatpak distribution
-- [ ] Plugin system — custom actions on clipboard match
+- [ ] Tray icon (ksni) + Waybar module (clipboard count)
+
+## Phase 9 — Ecosystem
+
+- [ ] Flatpak distribution (after Arch/AUR is solid)
+- [ ] Plugin system: custom actions on clipboard match
 - [ ] Password manager integration (bitwarden, keepassxc)
 - [ ] Global clipboard sync across devices (opt-in, encrypted)
 - [ ] clipvault.dev domain launch and project website
