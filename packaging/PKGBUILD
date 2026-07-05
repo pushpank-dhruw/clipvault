@@ -9,8 +9,11 @@ license=('MIT')
 depends=('wl-clipboard' 'gcc-libs' 'glibc')
 optdepends=('hyprland: source-app tracking and window rule integration')
 makedepends=('cargo')
+# !lto: makepkg's -flto=auto turns the bundled SQLite into GCC bitcode that
+# ld.lld cannot link; Cargo's own release LTO still applies to the Rust side.
+options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('87fd1ecce1ab8330d438332a9f0b341d59f8ffb067f00a46b33aee7cd603168e')
 
 prepare() {
   cd "$pkgname-$pkgver"
