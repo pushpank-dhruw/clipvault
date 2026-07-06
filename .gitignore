@@ -3,3 +3,7 @@ target/
 *.swo
 *~
 .DS_Store
+
+# Personal planning notes, kept local only
+ROADMAP.md
+CONTRIBUTING.md
