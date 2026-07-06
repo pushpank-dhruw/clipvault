@@ -471,6 +471,22 @@ impl Store {
             .context("failed to count entries")
     }
 
+    /// Entry counts as `(total, text, image, favorites)` for the shelf tabs.
+    pub fn type_counts(&self) -> Result<(usize, usize, usize, usize)> {
+        let one = |sql: &str| -> Result<usize> {
+            self.conn
+                .query_row(sql, [], |row| row.get::<_, i64>(0))
+                .map(|c| c as usize)
+                .context("failed to count entries")
+        };
+        Ok((
+            one("SELECT COUNT(*) FROM clipboard")?,
+            one("SELECT COUNT(*) FROM clipboard WHERE content_type = 'text'")?,
+            one("SELECT COUNT(*) FROM clipboard WHERE content_type = 'image'")?,
+            one("SELECT COUNT(*) FROM clipboard WHERE favorite = 1")?,
+        ))
+    }
+
     pub fn get_image_data(&self, id: i64) -> Result<Option<Vec<u8>>> {
         let entry = self.get_by_id(id)?;
         match entry {
