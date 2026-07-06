@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use clipvault::config::Config;
 use clipvault::gui::ClipboardApp;
+use clipvault::hover;
 use clipvault::ipc::{self, IpcState};
 use clipvault::monitor::{ClipboardContent, ClipboardMonitor};
 use clipvault::store::Store;
@@ -232,10 +233,32 @@ fn run_daemon(config: Config, start_visible: bool) -> Result<()> {
     };
 
     let shelf_size = [config.shelf_width, config.shelf_height];
+    let hover_signals = hover::HoverSignals::new();
+    let hover_for_gui = hover_signals.clone();
     eframe::run_native(
         "clipvault",
         native_options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
+            if config.notch_hover {
+                let started = hover::spawn(
+                    hover::HoverZone {
+                        width: config.notch_hover_width,
+                        height: config.notch_hover_height,
+                        shelf_width: config.shelf_width,
+                        shelf_height: config.shelf_height,
+                        dwell_ms: config.notch_hover_dwell_ms,
+                        close_delay_ms: config.notch_hover_close_delay_ms,
+                        poll_ms: config.notch_hover_poll_ms,
+                    },
+                    hover_signals,
+                    cc.egui_ctx.clone(),
+                );
+                if started {
+                    tracing::info!("notch hover watcher started");
+                } else {
+                    tracing::info!("notch hover unavailable (no Hyprland IPC socket)");
+                }
+            }
             Ok(Box::new(GuiWrapper {
                 app: ClipboardApp::new(store_for_gui, &config),
                 toggle_flag,
@@ -243,6 +266,9 @@ fn run_daemon(config: Config, start_visible: bool) -> Result<()> {
                 shelf_visible: start_visible,
                 shelf_was_visible: false,
                 shelf_size,
+                hover: hover_for_gui,
+                hover_opened: false,
+                autohide_blocked: false,
             }))
         }),
     )
@@ -256,13 +282,21 @@ struct GuiWrapper {
     shelf_visible: bool,
     shelf_was_visible: bool,
     shelf_size: [f32; 2],
+    hover: hover::HoverSignals,
+    hover_opened: bool,
+    autohide_blocked: bool,
 }
 
-/// Top-center the shelf on the focused monitor via hyprctl. Wayland clients
-/// cannot position themselves and map-time `move` windowrules lose to float
-/// centering on current Hyprland, so the daemon dispatches the move after the
-/// surface maps (two attempts to cover slow maps).
-fn position_shelf(shelf_width: f32) {
+/// Float, size, and top-center the shelf on the focused monitor via hyprctl.
+/// Wayland clients cannot position themselves, and windowrules may be absent
+/// (or their map-time `move` loses to float centering on current Hyprland),
+/// so the daemon enforces the full geometry after the surface maps (two
+/// attempts to cover slow maps; every dispatch is idempotent).
+///
+/// The shelf is mapped with `no_initial_focus` so a hover-open never steals
+/// keyboard focus from the app the user is typing in. A toggle-open (`focus`)
+/// explicitly claims focus afterwards so search and keyboard nav work.
+fn position_shelf(shelf_size: [f32; 2], focus: bool) {
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_err() {
         return;
     }
@@ -272,14 +306,20 @@ fn position_shelf(shelf_width: f32) {
             let Some((mon_x, mon_y, logical_w, reserved_top)) = focused_monitor() else {
                 continue;
             };
-            let x = mon_x + ((logical_w - shelf_width as i32) / 2).max(0);
-            let y = mon_y + reserved_top + 8;
+            let x = mon_x + ((logical_w - shelf_size[0] as i32) / 2).max(0);
+            let y = mon_y + reserved_top + hover::SHELF_TOP_GAP as i32;
+            let sel = "class:^(clipvault-shelf)$";
+            let mut batch = format!(
+                "dispatch setfloating {sel} ; \
+                 dispatch resizewindowpixel exact {} {},{sel} ; \
+                 dispatch movewindowpixel exact {} {},{sel}",
+                shelf_size[0] as i32, shelf_size[1] as i32, x, y
+            );
+            if focus {
+                batch.push_str(&format!(" ; dispatch focuswindow {sel}"));
+            }
             let _ = std::process::Command::new("hyprctl")
-                .args([
-                    "dispatch",
-                    "movewindowpixel",
-                    &format!("exact {} {},class:^(clipvault-shelf)$", x, y),
-                ])
+                .args(["--batch", &batch])
                 .output();
         }
     });
@@ -307,7 +347,12 @@ fn focused_monitor() -> Option<(i32, i32, i32, i32)> {
         .and_then(|r| r.get(1))
         .and_then(|v| v.as_i64())
         .unwrap_or(0) as i32;
-    Some((m["x"].as_i64()? as i32, m["y"].as_i64()? as i32, logical_w, reserved_top))
+    Some((
+        m["x"].as_i64()? as i32,
+        m["y"].as_i64()? as i32,
+        logical_w,
+        reserved_top,
+    ))
 }
 
 impl eframe::App for GuiWrapper {
@@ -319,10 +364,25 @@ impl eframe::App for GuiWrapper {
 
         if self.toggle_flag.swap(false, Ordering::SeqCst) {
             self.shelf_visible = !self.shelf_visible;
+            self.hover_opened = false;
+        }
+
+        if self.hover.show.swap(false, Ordering::SeqCst) && !self.shelf_visible {
+            self.shelf_visible = true;
+            self.hover_opened = true;
+        }
+
+        if self.hover.hide.swap(false, Ordering::SeqCst)
+            && self.shelf_visible
+            && self.hover_opened
+            && !self.autohide_blocked
+        {
+            self.shelf_visible = false;
+            self.hover_opened = false;
         }
 
         if self.shelf_visible && !self.shelf_was_visible {
-            position_shelf(self.shelf_size[0]);
+            position_shelf(self.shelf_size, !self.hover_opened);
         }
         self.shelf_was_visible = self.shelf_visible;
 
@@ -336,6 +396,7 @@ impl eframe::App for GuiWrapper {
                 .with_window_level(egui::WindowLevel::AlwaysOnTop);
 
             let mut hide = false;
+            let mut autohide_blocked = false;
             let app = &mut self.app;
             ctx.show_viewport_immediate(
                 egui::ViewportId::from_hash_of("clipvault-shelf"),
@@ -343,6 +404,10 @@ impl eframe::App for GuiWrapper {
                 |ctx, _class| {
                     let modal_was_open = app.modal_open();
                     app.ui(ctx);
+
+                    // A focused search box or an open dialog means the user
+                    // is engaged; a hover-opened shelf must not slip away.
+                    autohide_blocked = app.modal_open() || ctx.wants_keyboard_input();
 
                     let escape = ctx.input(|i| i.key_pressed(egui::Key::Escape));
                     if app.should_hide
@@ -353,10 +418,23 @@ impl eframe::App for GuiWrapper {
                     }
                 },
             );
+            self.autohide_blocked = autohide_blocked;
             if hide {
                 self.shelf_visible = false;
+                self.hover_opened = false;
             }
+        } else {
+            self.autohide_blocked = false;
         }
+
+        let state = if !self.shelf_visible {
+            hover::SHELF_HIDDEN
+        } else if self.hover_opened {
+            hover::SHELF_HOVERED
+        } else {
+            hover::SHELF_TOGGLED
+        };
+        self.hover.shelf_state.store(state, Ordering::SeqCst);
 
         // Keep the hidden host ticking so IPC flags are polled while idle.
         ctx.request_repaint_after(std::time::Duration::from_millis(250));
