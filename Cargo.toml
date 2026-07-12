@@ -2,12 +2,10 @@
 name = "clipvault"
 version = "0.1.0"
 edition = "2024"
-description = "Lightweight clipboard history manager with Wayland-native monitoring and GPU-accelerated GUI"
+description = "Headless clipboard-history daemon with Wayland-native monitoring and a JSON IPC socket"
 license = "MIT"
 
 [dependencies]
-eframe = { version = "0.31", default-features = false, features = ["wayland", "wgpu"] }
-egui = "0.31"
 wl-clipboard-rs = "0.9"
 rusqlite = { version = "0.35", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }

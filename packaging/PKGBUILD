@@ -2,12 +2,13 @@
 pkgname=clipvault
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Wayland-native clipboard history manager with a GPU-accelerated notch shelf (Hyprland)"
+pkgdesc="Wayland-native clipboard history: headless Rust daemon with a Quickshell notch shelf (Hyprland)"
 arch=('x86_64')
 url="https://github.com/pushpank-dhruw/clipvault"
 license=('MIT')
-depends=('wl-clipboard' 'gcc-libs' 'glibc')
-optdepends=('hyprland: source-app tracking and window rule integration')
+depends=('wl-clipboard' 'quickshell' 'gcc-libs' 'glibc')
+optdepends=('hyprland: source-app tracking and layer-shell notch integration'
+            'tesseract: OCR on image clips')
 makedepends=('cargo')
 # !lto: makepkg's -flto=auto turns the bundled SQLite into GCC bitcode that
 # ld.lld cannot link; Cargo's own release LTO still applies to the Rust side.
@@ -41,4 +42,10 @@ package() {
   install -Dm0644 packaging/clipvault.service "$pkgdir/usr/lib/systemd/user/clipvault.service"
   install -Dm0644 packaging/hyprland-clipvault.conf "$pkgdir/usr/share/clipvault/hyprland-clipvault.conf"
   install -Dm0644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+
+  # Quickshell frontend. Installed to the XDG system config dir so that
+  # `qs -c clipvault` finds it; ~/.config/quickshell/clipvault overrides it.
+  for qml in shell.qml Shelf.qml Card.qml HotZone.qml; do
+    install -Dm0644 "quickshell/$qml" "$pkgdir/etc/xdg/quickshell/clipvault/$qml"
+  done
 }
