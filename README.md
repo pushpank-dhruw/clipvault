@@ -4,6 +4,8 @@ Clipboard history for Hyprland. It lives at the top of the screen and drops
 down when you reach for it, so you can grab something you copied earlier
 without losing your place.
 
+![The clipvault shelf](docs/shelf.png)
+
 I built it for my own Omarchy machine, so it leans hard on Hyprland and
 Wayland. That's where it works.
 
