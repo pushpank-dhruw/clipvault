@@ -284,6 +284,19 @@ PanelWindow {
                     text: shelf.shell.query.length > 0 ? "No matches" : "Clipboard is empty"
                     color: shelf.muted
                 }
+
+                // Thin scroll indicator (also draggable) shown when the history
+                // overflows the visible width.
+                ScrollBar.horizontal: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                    height: 4
+                    contentItem: Rectangle {
+                        radius: 2
+                        color: shelf.muted
+                        opacity: 0.7
+                    }
+                    background: Item {}
+                }
             }
 
             // ---- OCR result strip ----
