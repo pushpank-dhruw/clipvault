@@ -38,7 +38,10 @@ PanelWindow {
     color: "transparent"
 
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+    // Grab the keyboard for a toggle-opened shelf so arrow/Enter navigation and
+    // search work; a hover-opened shelf stays hands-off (no focus steal).
+    WlrLayershell.keyboardFocus: (shell.open && !shell.hoverOpened)
+        ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand
     WlrLayershell.namespace: "clipvault-shelf"
 
     // Keep a hover-opened shelf alive while the pointer is over it, and close
@@ -52,6 +55,17 @@ PanelWindow {
         target: shelf.shell
         property: "keepOpen"
         value: search.activeFocus
+    }
+
+    // Focus the card list when the shelf opens, so arrow keys work right away.
+    Connections {
+        target: shelf.shell
+        function onOpenChanged() {
+            if (shelf.shell.open) {
+                list.currentIndex = 0;
+                list.forceActiveFocus();
+            }
+        }
     }
 
     Rectangle {
@@ -227,13 +241,31 @@ PanelWindow {
                 orientation: ListView.Horizontal
                 spacing: 10
                 clip: true
+                focus: true
+                keyNavigationEnabled: true
+                highlightMoveDuration: 140
                 model: shelf.shell.entries
+
+                function pasteCurrent() {
+                    const e = shelf.shell.entries[list.currentIndex];
+                    if (e)
+                        shelf.shell.paste(e.id);
+                }
+
+                Keys.onReturnPressed: list.pasteCurrent()
+                Keys.onEnterPressed: list.pasteCurrent()
+                Keys.onDeletePressed: {
+                    const e = shelf.shell.entries[list.currentIndex];
+                    if (e)
+                        shelf.shell.del(e.id);
+                }
 
                 delegate: Card {
                     required property var modelData
                     entry: modelData
                     shell: shelf.shell
                     height: list.height
+                    selected: ListView.isCurrentItem
                 }
 
                 Text {

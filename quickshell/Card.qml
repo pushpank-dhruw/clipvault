@@ -15,13 +15,32 @@ Item {
     readonly property color fg: card.shell.theme.fg
     readonly property color muted: card.shell.theme.muted
 
+    // Highlighted by keyboard navigation.
+    property bool selected: false
+
+    function relTime(ts) {
+        if (!ts)
+            return "";
+        const then = new Date(ts).getTime();
+        if (isNaN(then))
+            return "";
+        const s = Math.max(0, (Date.now() - then) / 1000);
+        if (s < 60)
+            return "now";
+        if (s < 3600)
+            return Math.floor(s / 60) + "m";
+        if (s < 86400)
+            return Math.floor(s / 3600) + "h";
+        return Math.floor(s / 86400) + "d";
+    }
+
     Rectangle {
         id: body
         anchors.fill: parent
         radius: 10
         color: hover.hovered ? card.shell.theme.surfaceHover : card.shell.theme.surface
-        border.color: card.shell.theme.line
-        border.width: 1
+        border.color: card.selected ? card.shell.theme.accent : card.shell.theme.line
+        border.width: card.selected ? 2 : 1
 
         // preview + meta
         Column {
@@ -59,12 +78,22 @@ Item {
                 }
             }
 
-            Text {
+            Row {
                 width: parent.width
-                text: card.entry.source || (card.isImage ? "image" : "text")
-                color: card.muted
-                font.pixelSize: 10
-                elide: Text.ElideRight
+                spacing: 6
+                Text {
+                    width: parent.width - timeText.width - parent.spacing
+                    text: card.entry.source || (card.isImage ? "image" : "text")
+                    color: card.muted
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                }
+                Text {
+                    id: timeText
+                    text: card.relTime(card.entry.timestamp)
+                    color: card.muted
+                    font.pixelSize: 10
+                }
             }
         }
 
