@@ -41,11 +41,14 @@ package() {
   install -Dm0644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm0644 packaging/clipvault.service "$pkgdir/usr/lib/systemd/user/clipvault.service"
   install -Dm0644 packaging/hyprland-clipvault.conf "$pkgdir/usr/share/clipvault/hyprland-clipvault.conf"
+  install -Dm0644 packaging/waybar-clipvault.jsonc "$pkgdir/usr/share/clipvault/waybar-clipvault.jsonc"
   install -Dm0644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+
+  # App-launcher entry (Exec=clipvault open).
+  install -Dm0644 packaging/clipvault.desktop "$pkgdir/usr/share/applications/clipvault.desktop"
 
   # Quickshell frontend. Installed to the XDG system config dir so that
   # `qs -c clipvault` finds it; ~/.config/quickshell/clipvault overrides it.
-  for qml in shell.qml Shelf.qml Card.qml HotZone.qml; do
-    install -Dm0644 "quickshell/$qml" "$pkgdir/etc/xdg/quickshell/clipvault/$qml"
-  done
+  install -dm0755 "$pkgdir/etc/xdg/quickshell/clipvault"
+  install -m0644 quickshell/*.qml "$pkgdir/etc/xdg/quickshell/clipvault/"
 }

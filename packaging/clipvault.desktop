@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Clipvault
+GenericName=Clipboard History
+Comment=Open the clipboard history shelf
+Exec=clipvault open
+Icon=edit-paste
+Terminal=false
+Categories=Utility;
+Keywords=clipboard;history;paste;copy;
+StartupNotify=false

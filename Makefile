@@ -20,6 +20,7 @@ install: build
 	install -m644 quickshell/*.qml "$(QS_DIR)/"
 	install -dm755 "$(UNIT_DIR)"
 	sed 's|^ExecStart=.*|ExecStart=$(BIN)|' packaging/clipvault.service > "$(UNIT_DIR)/clipvault.service"
+	install -Dm644 packaging/clipvault.desktop "$(PREFIX)/share/applications/clipvault.desktop"
 	@echo ""
 	@echo "clipvault installed to $(BIN)"
 	@echo "  1. ensure $(PREFIX)/bin is on your PATH"
@@ -30,6 +31,7 @@ install: build
 
 uninstall:
 	rm -f "$(BIN)" "$(UNIT_DIR)/clipvault.service"
+	rm -f "$(PREFIX)/share/applications/clipvault.desktop"
 	rm -rf "$(QS_DIR)"
 
 run: build
