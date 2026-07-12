@@ -203,6 +203,39 @@ fn run_daemon(config: Config) -> Result<()> {
         }
     });
 
+    // Reload config when config.toml changes on disk (hand edits), applying it
+    // live and notifying the frontend. The settings window writes the same file,
+    // so equal reloads are skipped to avoid redundant churn.
+    {
+        let cfg = shared_config.clone();
+        let store_w = store.clone();
+        let subs_w = subscribers.clone();
+        std::thread::spawn(move || {
+            let Ok(path) = Config::path() else { return };
+            let mut last = file_mtime(&path);
+            loop {
+                std::thread::sleep(Duration::from_secs(2));
+                let cur = file_mtime(&path);
+                if cur == last {
+                    continue;
+                }
+                last = cur;
+                let Ok(loaded) = Config::load() else { continue };
+                if cfg.lock().map(|c| *c == loaded).unwrap_or(true) {
+                    continue;
+                }
+                if let Ok(mut s) = store_w.lock() {
+                    s.set_limits(loaded.max_entries, loaded.max_image_entries);
+                }
+                if let Ok(mut c) = cfg.lock() {
+                    *c = loaded;
+                }
+                ipc::broadcast(&subs_w, ipc::CONFIG_EVENT);
+                tracing::info!("config reloaded from disk");
+            }
+        });
+    }
+
     tracing::info!("clipvault daemon started (headless)");
 
     while !quit_flag.load(Ordering::SeqCst) {
@@ -212,6 +245,10 @@ fn run_daemon(config: Config) -> Result<()> {
     tracing::info!("clipvault daemon stopping");
     let _ = std::fs::remove_file(&socket_path);
     Ok(())
+}
+
+fn file_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).ok().and_then(|m| m.modified().ok())
 }
 
 fn get_clipboard_text_now() -> Result<String> {
