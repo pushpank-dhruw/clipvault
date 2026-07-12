@@ -50,14 +50,23 @@ if you keep your keybinds together.
 ### From source
 
 ```bash
-cargo build --release
-sudo cp target/release/clipvault /usr/local/bin/
+make install         # builds + installs the binary, QML, and the systemd unit
+systemctl --user enable --now clipvault
+```
 
-# frontend: install the Quickshell config where `qs -c clipvault` finds it
+Then add to `~/.config/hypr/hyprland.conf`:
+
+```ini
+exec-once = qs -c clipvault
+bind = SUPER SHIFT, V, exec, clipvault toggle
+```
+
+For development, run the pieces directly instead of installing:
+
+```bash
+cargo run &                                     # daemon
 ln -s "$PWD/quickshell" ~/.config/quickshell/clipvault
-
-clipvault &          # daemon (or use the systemd user service)
-qs -c clipvault      # frontend
+qs -c clipvault                                 # frontend
 ```
 
 Needs [`quickshell`](https://quickshell.org) for the UI, `wl-clipboard` for
