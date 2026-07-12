@@ -1,3 +1,4 @@
+use crate::config::Config;
 use anyhow::Result;
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
@@ -26,14 +27,14 @@ impl ClipboardContent {
 }
 
 pub struct ClipboardMonitor {
-    poll_interval: Duration,
+    config: Arc<Mutex<Config>>,
     last_hash: Arc<Mutex<Option<String>>>,
 }
 
 impl ClipboardMonitor {
-    pub fn new(poll_interval_ms: u64) -> Self {
+    pub fn new(config: Arc<Mutex<Config>>) -> Self {
         Self {
-            poll_interval: Duration::from_millis(poll_interval_ms),
+            config,
             last_hash: Arc::new(Mutex::new(None)),
         }
     }
@@ -47,7 +48,13 @@ impl ClipboardMonitor {
         F: FnMut(ClipboardContent, Option<String>),
     {
         loop {
-            if let Some(content) = get_clipboard_content().await {
+            // Read poll interval and the sensitive-capture policy fresh each
+            // tick so the settings window can change them live.
+            let (poll_ms, hide_sensitive) = {
+                let c = self.config.lock().unwrap();
+                (c.poll_interval_ms.max(50), c.hide_sensitive)
+            };
+            if let Some(content) = get_clipboard_content(hide_sensitive).await {
                 let hash = content.hash();
                 let mut last = self.last_hash.lock().unwrap();
                 if last.as_ref() != Some(&hash) {
@@ -65,13 +72,28 @@ impl ClipboardMonitor {
                     *last = Some(hash);
                 }
             }
-            sleep(self.poll_interval).await;
+            sleep(Duration::from_millis(poll_ms)).await;
         }
     }
 }
 
-async fn get_clipboard_content() -> Option<ClipboardContent> {
+/// Whether the current clipboard offer is marked sensitive (e.g. a password
+/// manager sets `x-kde-passwordManagerHint`), so it should not be recorded.
+fn is_sensitive(mime_types: &[String]) -> bool {
+    mime_types.iter().any(|t| {
+        let t = t.to_ascii_lowercase();
+        t.contains("x-kde-passwordmanagerhint")
+            || t.contains("sensitive")
+            || t.contains("concealed")
+    })
+}
+
+async fn get_clipboard_content(hide_sensitive: bool) -> Option<ClipboardContent> {
     let mime_types = get_available_mime_types().await;
+
+    if hide_sensitive && is_sensitive(&mime_types) {
+        return None;
+    }
 
     if let Some(mime) = mime_types.iter().find(|t| t.starts_with("image/"))
         && let Some(data) = capture_image(mime).await

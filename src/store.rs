@@ -19,6 +19,10 @@ pub struct ClipboardEntry {
     pub content_path: Option<String>,
     pub mime_type: Option<String>,
     pub category: Option<String>,
+    /// On-disk thumbnail path for image entries, derived from `content_path`.
+    /// Lets a QML frontend render previews via `file://` without shipping bytes
+    /// over IPC. `None` for text entries.
+    pub thumb_path: Option<String>,
 }
 
 fn serialize_ts<S: serde::Serializer>(dt: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Error> {
@@ -471,6 +475,13 @@ impl Store {
             .context("failed to count entries")
     }
 
+    /// Update eviction caps at runtime (from the settings window). New caps
+    /// take effect on the next insert.
+    pub fn set_limits(&mut self, max_entries: usize, max_image_entries: usize) {
+        self.max_entries = max_entries;
+        self.max_image_entries = max_image_entries;
+    }
+
     /// Entry counts as `(total, text, image, favorites)` for the shelf tabs.
     pub fn type_counts(&self) -> Result<(usize, usize, usize, usize)> {
         let one = |sql: &str| -> Result<usize> {
@@ -624,6 +635,8 @@ fn map_row(row: &rusqlite::Row) -> rusqlite::Result<ClipboardEntry> {
     let timestamp = DateTime::parse_from_rfc3339(&ts_str)
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now());
+    let content_path: Option<String> = row.get(7)?;
+    let thumb_path = content_path.as_deref().and_then(derive_thumb_path);
     Ok(ClipboardEntry {
         id: row.get(0)?,
         content: row.get(1)?,
@@ -632,10 +645,27 @@ fn map_row(row: &rusqlite::Row) -> rusqlite::Result<ClipboardEntry> {
         hash: row.get(4)?,
         timestamp,
         favorite: row.get::<_, i64>(6)? != 0,
-        content_path: row.get(7)?,
+        content_path,
         mime_type: row.get(8)?,
         category: row.get(9)?,
+        thumb_path,
     })
+}
+
+/// Thumbnail path for an image `content_path`, matching the `thumb_{filename}`
+/// naming produced by [`generate_thumbnail`]. Returns the deterministic path
+/// even if the file is absent (old entries) — the frontend falls back to the
+/// full image when it fails to load.
+fn derive_thumb_path(content_path: &str) -> Option<String> {
+    let p = Path::new(content_path);
+    let name = p.file_name()?.to_str()?;
+    let parent = p.parent()?;
+    Some(
+        parent
+            .join(format!("thumb_{name}"))
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 pub fn generate_thumbnail(image_path: &Path, images_dir: &Path) -> Result<Option<PathBuf>> {
