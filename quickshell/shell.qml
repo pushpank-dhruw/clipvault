@@ -63,7 +63,7 @@ ShellRoot {
                 if (r.ok) root.entries = r.data;
             });
         } else {
-            const args = { limit: 200 };
+            const args = { limit: root.config.shelf_max_entries || 60 };
             if (root.filter !== "all")
                 args.filter = root.filter;
             if (root.category !== "")
