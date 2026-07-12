@@ -222,7 +222,7 @@ ShellRoot {
     IpcHandler {
         target: "shelf"
         function toggle(): void { root.open = !root.open; root.hoverOpened = false; }
-        function show(): void { root.open = true; root.hoverOpened = false; }
+        function reveal(): void { root.open = true; root.hoverOpened = false; }
         function hide(): void { root.open = false; root.hoverOpened = false; }
         function settings(): void { root.settingsOpen = true; }
     }

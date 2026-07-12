@@ -23,6 +23,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Open the shelf, starting the daemon and Quickshell frontend if needed
+    /// (used by the app launcher / panel button)
+    Open,
     /// Toggle the clipboard shelf (signals the running Quickshell frontend)
     Toggle,
     /// Quit the running daemon
@@ -51,6 +54,10 @@ fn main() -> Result<()> {
     let config = Config::load()?;
 
     match cli.command {
+        Some(Commands::Open) => {
+            open_app();
+            Ok(())
+        }
         Some(Commands::Toggle) => {
             toggle_or_start(config);
             Ok(())
@@ -129,6 +136,68 @@ fn toggle_or_start(config: Config) {
     if let Err(e) = run_daemon(config) {
         eprintln!("Failed to start daemon: {}", e);
     }
+}
+
+/// `clipvault open` (app launcher / panel button): make sure the daemon and the
+/// Quickshell frontend are running, then show the shelf.
+fn open_app() {
+    let socket_path = Config::socket_path();
+
+    // 1. Start the daemon if its socket is absent, and wait for it to listen.
+    if !socket_path.exists() {
+        let exe = std::env::current_exe().unwrap_or_else(|_| "clipvault".into());
+        spawn_detached(exe, &[]);
+        for _ in 0..40 {
+            if socket_path.exists() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    // 2. Show the shelf. `qs ... ipc call shelf show` only succeeds once a
+    //    clipvault Quickshell instance is running, so start one and retry if not.
+    if !qs_show() {
+        spawn_detached("qs", &["-c", "clipvault"]);
+        for _ in 0..50 {
+            std::thread::sleep(Duration::from_millis(100));
+            if qs_show() {
+                break;
+            }
+        }
+    }
+}
+
+/// Ask the running Quickshell frontend to show the shelf. Returns whether an
+/// instance was reachable.
+fn qs_show() -> bool {
+    std::process::Command::new("qs")
+        .args(["-c", "clipvault", "ipc", "call", "shelf", "reveal"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Spawn a process fully detached (new session, no controlling terminal) so it
+/// outlives this short-lived `open` invocation.
+fn spawn_detached<S: AsRef<std::ffi::OsStr>>(program: S, args: &[&str]) {
+    use std::os::unix::process::CommandExt;
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    // Safety: setsid in the child only starts a new session before exec.
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+    let _ = cmd.spawn();
 }
 
 /// Run the headless daemon: clipboard monitor + IPC listener. Blocks until a
