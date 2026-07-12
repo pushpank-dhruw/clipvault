@@ -76,6 +76,7 @@ capture, and (optionally) `tesseract` for OCR.
 
 | Command | What it does |
 |---|---|
+| `clipvault open` | Show the shelf, starting the daemon + frontend if needed |
 | `clipvault` | Start the headless daemon (capture + IPC) |
 | `clipvault toggle` | Show or hide the shelf (signals the frontend) |
 | `clipvault quit` | Stop the daemon |
@@ -87,6 +88,19 @@ capture, and (optionally) `tesseract` for OCR.
 You can also toggle the frontend directly with
 `qs -c clipvault ipc call shelf toggle`, and open settings with
 `qs -c clipvault ipc call shelf settings`.
+
+### Opening it
+
+Three ways to open the shelf:
+
+- **Hover** the top-center notch (the shelf drops down).
+- **Keybind** `SUPER+SHIFT+V`.
+- **App launcher / panel** — the package installs a `Clipvault` entry
+  (`clipvault open`) so it shows up in your app launcher. For a button on your
+  bar, merge `packaging/waybar-clipvault.jsonc` into your Waybar config.
+
+`clipvault open` starts the daemon and the Quickshell frontend if they are not
+already running, so it works as a cold-start entry point.
 
 ## Hyprland
 

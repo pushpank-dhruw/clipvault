@@ -1,0 +1,15 @@
+// Waybar "start button" for clipvault.
+//
+// 1. Add "custom/clipvault" to a modules list, e.g.:
+//        "modules-right": ["custom/clipvault", "clock", ...]
+// 2. Merge this object into your Waybar config (~/.config/waybar/config.jsonc).
+//
+// Clicking it runs `clipvault open`, which starts the daemon and Quickshell
+// frontend if needed and shows the shelf.
+{
+  "custom/clipvault": {
+    "format": "󰅍",
+    "tooltip": "Clipboard history",
+    "on-click": "clipvault open"
+  }
+}

@@ -14,9 +14,12 @@ PanelWindow {
     visible: zone.shell.config.notch_hover !== false
 
     anchors.top: true
-    exclusiveZone: 0
+    // Ignore other layers' exclusive zones so the strip sits at the TRUE top
+    // edge (y=0), over the top sliver of a bar like waybar — otherwise it is
+    // pushed below the bar and slamming the cursor to the top edge misses it.
+    exclusionMode: ExclusionMode.Ignore
     implicitWidth: zone.shell.config.notch_hover_width || 320
-    implicitHeight: 6
+    implicitHeight: zone.shell.config.notch_hover_height || 10
     color: "transparent"
 
     WlrLayershell.layer: WlrLayer.Overlay
