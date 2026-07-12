@@ -144,6 +144,8 @@ FloatingWindow {
 
             Label { text: "Behaviour"; color: win.shell.theme.accent; font.bold: true }
             BoolRow { label: "Hover to open"; key: "notch_hover" }
+            IntRow { label: "Notch width"; key: "notch_hover_width"; minv: 100; maxv: 800 }
+            IntRow { label: "Notch height"; key: "notch_hover_height"; minv: 4; maxv: 40 }
             IntRow { label: "Hover dwell (ms)"; key: "notch_hover_dwell_ms"; minv: 0; maxv: 1000 }
             BoolRow { label: "Enable OCR"; key: "ocr_enabled" }
             BoolRow { label: "Hide sensitive (skip password-manager clips)"; key: "hide_sensitive" }
