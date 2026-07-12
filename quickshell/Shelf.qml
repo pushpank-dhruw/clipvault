@@ -259,6 +259,16 @@ PanelWindow {
                     if (e)
                         shelf.shell.del(e.id);
                 }
+                // Type-to-search: a printable key jumps into the search box.
+                Keys.onPressed: event => {
+                    const c = event.text.length === 1 ? event.text.charCodeAt(0) : 0;
+                    if (c >= 0x20 && c < 0x7f
+                            && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
+                        shelf.shell.setQuery(shelf.shell.query + event.text);
+                        search.forceActiveFocus();
+                        event.accepted = true;
+                    }
+                }
 
                 delegate: Card {
                     required property var modelData
