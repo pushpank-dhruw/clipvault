@@ -34,11 +34,49 @@ FloatingWindow {
         Layout.fillWidth: true
         Label { text: row.label; color: win.shell.theme.fg; Layout.fillWidth: true }
         SpinBox {
+            id: spin
             from: row.minv
             to: row.maxv
             editable: true
             value: win.num(row.key, row.minv)
             onValueModified: win.shell.saveConfig({ [row.key]: value })
+            implicitWidth: 128
+            implicitHeight: 30
+            leftPadding: 30
+            rightPadding: 30
+
+            background: Rectangle {
+                radius: 8
+                color: win.shell.theme.surface
+                border.color: win.shell.theme.line
+            }
+            contentItem: TextInput {
+                text: spin.displayText
+                color: win.shell.theme.fg
+                font: spin.font
+                horizontalAlignment: Qt.AlignHCenter
+                verticalAlignment: Qt.AlignVCenter
+                readOnly: !spin.editable
+                validator: spin.validator
+                inputMethodHints: Qt.ImhFormattedNumbersOnly
+                selectByMouse: true
+            }
+            down.indicator: Rectangle {
+                x: 0
+                height: spin.height
+                implicitWidth: 28
+                radius: 8
+                color: spin.down.pressed ? win.shell.theme.surfaceHover : "transparent"
+                Text { anchors.centerIn: parent; text: "−"; color: win.shell.theme.fg; font.pixelSize: 15 }
+            }
+            up.indicator: Rectangle {
+                x: spin.width - width
+                height: spin.height
+                implicitWidth: 28
+                radius: 8
+                color: spin.up.pressed ? win.shell.theme.surfaceHover : "transparent"
+                Text { anchors.centerIn: parent; text: "+"; color: win.shell.theme.fg; font.pixelSize: 15 }
+            }
         }
     }
 
@@ -49,8 +87,28 @@ FloatingWindow {
         Layout.fillWidth: true
         Label { text: row.label; color: win.shell.theme.fg; Layout.fillWidth: true }
         Switch {
+            id: sw
             checked: win.flag(row.key, false)
             onToggled: win.shell.saveConfig({ [row.key]: checked })
+            indicator: Rectangle {
+                implicitWidth: 42
+                implicitHeight: 22
+                x: sw.width - width - sw.rightPadding
+                y: sw.topPadding + (sw.availableHeight - height) / 2
+                radius: height / 2
+                color: sw.checked ? win.shell.theme.accent : win.shell.theme.surface
+                border.color: win.shell.theme.line
+                Rectangle {
+                    x: sw.checked ? parent.width - width - 2 : 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 18
+                    height: 18
+                    radius: 9
+                    color: sw.checked ? win.shell.theme.onAccent : win.shell.theme.fg
+                    Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                }
+            }
+            contentItem: Item {}
         }
     }
 
@@ -69,14 +127,20 @@ FloatingWindow {
             IntRow { label: "Thumbnail size"; key: "shelf_thumb_size"; minv: 32; maxv: 160 }
             IntRow { label: "Max cards"; key: "shelf_max_entries"; minv: 10; maxv: 200 }
 
-            MenuSeparator { Layout.fillWidth: true }
+            MenuSeparator {
+                Layout.fillWidth: true
+                contentItem: Rectangle { implicitHeight: 1; color: win.shell.theme.line }
+            }
 
             Label { text: "History"; color: win.shell.theme.accent; font.bold: true }
             IntRow { label: "Max text entries"; key: "max_entries"; minv: 50; maxv: 5000 }
             IntRow { label: "Max image entries"; key: "max_image_entries"; minv: 10; maxv: 500 }
             IntRow { label: "Poll interval (ms)"; key: "poll_interval_ms"; minv: 100; maxv: 3000 }
 
-            MenuSeparator { Layout.fillWidth: true }
+            MenuSeparator {
+                Layout.fillWidth: true
+                contentItem: Rectangle { implicitHeight: 1; color: win.shell.theme.line }
+            }
 
             Label { text: "Behaviour"; color: win.shell.theme.accent; font.bold: true }
             BoolRow { label: "Hover to open"; key: "notch_hover" }
@@ -88,8 +152,21 @@ FloatingWindow {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
                 Button {
+                    id: closeBtn
                     text: "Close"
                     onClicked: win.shell.settingsOpen = false
+                    implicitHeight: 30
+                    contentItem: Text {
+                        text: closeBtn.text
+                        color: win.shell.theme.onAccent
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 8
+                        implicitWidth: 92
+                        color: closeBtn.down ? Qt.darker(win.shell.theme.accent, 1.15) : win.shell.theme.accent
+                    }
                 }
             }
         }
