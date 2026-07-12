@@ -10,90 +10,97 @@ Wayland. That's where it works.
 ## What it does
 
 Hover the top center of the screen (or press your keybind) and the shelf
-slides down. It keeps everything you copy, text and images, and lays it out
-as cards you scroll through. Click a card to copy it back.
+drops down. It keeps everything you copy, text and images, and lays it out as
+cards you scroll through. Click a card to copy it back.
 
 A few things worth knowing:
 
-- Cards are grouped by day, so Today and Yesterday stay separate.
-- Hex colors like `#FF8F4A` show up as color swatches.
+- Text and image clips, with image thumbnails rendered right on the card.
+- Tabs for All / Text / Images / Favorites, plus search when the list gets long.
 - The OCR button pulls text out of a screenshot, if you have tesseract.
-- Each card shows the app you copied from, how long ago, and image sizes.
-- Hover a card to favorite it, delete it, or open the image.
-- Search when the list gets long.
+- Each card shows the app you copied from; hover to favorite or delete it.
+- A ⚙ settings window to tune the look and behaviour, applied live.
+
+## Architecture
+
+Two pieces talking over a unix socket:
+
+- **`clipvault`** — a small headless Rust daemon: watches the Wayland
+  clipboard, stores history in SQLite, and serves a JSON IPC protocol.
+- **A Quickshell (QML) frontend** — the shelf itself, a real `wlr-layer-shell`
+  notch. It subscribes to the daemon and renders the cards.
+
+The daemon has no GUI of its own, so it is light and starts instantly.
 
 ## Install
 
 ### Arch / Omarchy
 
 ```bash
-yay -S clipvault
+yay -S clipvault                 # pulls in quickshell + wl-clipboard
 systemctl --user enable --now clipvault
 echo 'source = /usr/share/clipvault/hyprland-clipvault.conf' >> ~/.config/hypr/hyprland.conf
 hyprctl reload
 ```
 
-On Omarchy the `SUPER+SHIFT+V` bind fits in `~/.config/hypr/bindings.conf` if
-you keep your keybinds together.
+The sourced config launches the frontend (`exec-once = qs -c clipvault`) and
+binds `SUPER+SHIFT+V`. On Omarchy the bind fits in `~/.config/hypr/bindings.conf`
+if you keep your keybinds together.
 
 ### From source
 
 ```bash
 cargo build --release
 sudo cp target/release/clipvault /usr/local/bin/
+
+# frontend: install the Quickshell config where `qs -c clipvault` finds it
+ln -s "$PWD/quickshell" ~/.config/quickshell/clipvault
+
+clipvault &          # daemon (or use the systemd user service)
+qs -c clipvault      # frontend
 ```
 
-The OCR button needs tesseract:
-
-```bash
-sudo pacman -S tesseract tesseract-data-eng
-```
+Needs [`quickshell`](https://quickshell.org) for the UI, `wl-clipboard` for
+capture, and (optionally) `tesseract` for OCR.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `clipvault` | Start the daemon (capture plus shelf) |
-| `clipvault toggle` | Show or hide the shelf |
+| `clipvault` | Start the headless daemon (capture + IPC) |
+| `clipvault toggle` | Show or hide the shelf (signals the frontend) |
 | `clipvault quit` | Stop the daemon |
 | `clipvault list` | Print history as JSON |
 | `clipvault search <query>` | Search from the terminal |
 | `clipvault clear` | Wipe the history |
 | `clipvault status` | Daemon status and entry count |
 
+You can also toggle the frontend directly with
+`qs -c clipvault ipc call shelf toggle`, and open settings with
+`qs -c clipvault ipc call shelf settings`.
+
 ## Hyprland
 
 The package ships a ready config at
-`/usr/share/clipvault/hyprland-clipvault.conf` with the keybind and window
-rules. Source it, or copy the parts you want:
+`/usr/share/clipvault/hyprland-clipvault.conf`. The shelf and hover hot-zone
+are layer-shell surfaces that place themselves, so there are no window rules
+for them. The only toplevel is the settings dialog:
 
 ```ini
+exec-once = qs -c clipvault
 bind = SUPER SHIFT, V, exec, clipvault toggle
 
-# the shelf
-windowrule = float on, match:class ^(clipvault-shelf)$
-windowrule = size 820 220, match:class ^(clipvault-shelf)$
-windowrule = move 50%-410 8, match:class ^(clipvault-shelf)$
-windowrule = no_initial_focus on, match:class ^(clipvault-shelf)$
-windowrule = rounding 14, match:class ^(clipvault-shelf)$
-windowrule = animation slide top, match:class ^(clipvault-shelf)$
-windowrule = opacity 1.0 override 1.0 override, match:class ^(clipvault-shelf)$
-
-# hidden 2x2 host window the daemon needs
-windowrule = float on, match:class ^(clipvault)$
-windowrule = size 2 2, match:class ^(clipvault)$
-windowrule = opacity 0, match:class ^(clipvault)$
-windowrule = no_focus on, match:class ^(clipvault)$
+# settings dialog (Quickshell FloatingWindow)
+windowrule = float on, match:class ^(org.quickshell)$
+windowrule = size 480 620, match:class ^(org.quickshell)$
+windowrule = opacity 1.0 override 1.0 override, match:class ^(org.quickshell)$
 ```
-
-`no_initial_focus` matters: it stops a hover-opened shelf from stealing
-keyboard focus while you type. The daemon grabs focus itself when you open
-the shelf with the keybind.
 
 ## Config
 
-Lives at `~/.config/clipvault/config.toml`. The defaults are fine; change
-them if you want:
+Lives at `~/.config/clipvault/config.toml`. The ⚙ settings window edits it for
+you and applies changes live; you can also edit it by hand. The defaults are
+fine:
 
 ```toml
 max_entries = 500
@@ -105,17 +112,16 @@ shelf_height = 220.0
 shelf_thumb_size = 56.0
 shelf_max_entries = 50
 notch_hover = true                # drop the shelf when you hover the notch
-notch_hover_width = 300.0         # hot zone width, centered at the top edge
-notch_hover_height = 8.0          # minimum hot zone height (a top bar extends it)
+notch_hover_width = 300.0         # hot-zone width, centered at the top edge
 notch_hover_dwell_ms = 120        # how long to dwell before it opens
 notch_hover_close_delay_ms = 400  # grace period before a hover-opened shelf hides
-notch_hover_poll_ms = 90          # cursor poll interval
 ocr_enabled = false
-hide_sensitive = false
+hide_sensitive = false            # skip clips marked sensitive (password managers)
 image_store_dir = "images"
 ```
 
 ## Built with
 
-Rust, egui/eframe on wgpu, rusqlite, wl-clipboard-rs, tokio, and clap.
-tesseract is optional and only used for OCR.
+Rust (rusqlite, wl-clipboard-rs, tokio, clap) for the daemon, and Quickshell
+(QML / QtQuick, wlr-layer-shell) for the frontend. tesseract is optional and
+only used for OCR.
