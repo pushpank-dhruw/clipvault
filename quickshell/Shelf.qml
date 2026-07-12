@@ -140,6 +140,47 @@ PanelWindow {
                         verticalAlignment: Text.AlignVCenter
                         elide: Text.ElideRight
                     }
+                    indicator: Text {
+                        x: catCombo.width - width - 10
+                        y: (catCombo.height - height) / 2
+                        text: "▾"
+                        color: shelf.muted
+                        font.pixelSize: 12
+                    }
+                    delegate: ItemDelegate {
+                        id: catItem
+                        required property var modelData
+                        required property int index
+                        width: catCombo.width
+                        height: 28
+                        contentItem: Text {
+                            leftPadding: 8
+                            text: catItem.modelData.label
+                            color: shelf.fg
+                            font.pixelSize: 12
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        background: Rectangle {
+                            color: catCombo.highlightedIndex === catItem.index ? shelf.surfaceHover : "transparent"
+                        }
+                    }
+                    popup: Popup {
+                        y: catCombo.height + 4
+                        width: catCombo.width
+                        padding: 4
+                        background: Rectangle {
+                            radius: 8
+                            color: shelf.surface
+                            border.color: shelf.line
+                        }
+                        contentItem: ListView {
+                            clip: true
+                            implicitHeight: Math.min(contentHeight, 320)
+                            model: catCombo.popup.visible ? catCombo.delegateModel : null
+                            currentIndex: catCombo.highlightedIndex
+                        }
+                    }
                 }
 
                 Item { Layout.fillWidth: true }
